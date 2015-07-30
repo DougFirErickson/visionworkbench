@@ -220,6 +220,8 @@ void do_normal_mosaic(const Options& opt, const vw::ProgressCallback *progress) 
   }
 
   vw_out() << "Generating " << opt.mode.string() << " overlay..." << std::endl;
+  vw_out() << "Writing: " << opt.output_file_name << std::endl;
+
   quadtree.generate( *progress );
 }
 
@@ -240,8 +242,7 @@ void do_mosaic(const Options& opt, const vw::ProgressCallback *progress) {
   typedef typename PixelChannelType<PixelT>::type ChannelT;
 
   // If we're not outputting any special sort of mosaic (just a regular old
-  // quadtree, no georeferencing, no metadata), we use a different
-  // function.
+  // quadtree, no georeferencing, no metadata), we use a different function.
   if(opt.mode == Mode::NONE || opt.proj.type == Projection::NONE) {
     do_normal_mosaic<PixelT>(opt, progress);
     return;
@@ -249,11 +250,9 @@ void do_mosaic(const Options& opt, const vw::ProgressCallback *progress) {
 
   // Read in georeference info and compute total resolution.
   int total_resolution = 1024;
-  std::vector<GeoReference> georeferences =
-    load_image_georeferences( opt, total_resolution );
+  std::vector<GeoReference> georeferences = load_image_georeferences( opt, total_resolution );
 
-  boost::shared_ptr<mosaic::QuadTreeConfig> config =
-    mosaic::QuadTreeConfig::make(opt.mode.string());
+  boost::shared_ptr<mosaic::QuadTreeConfig> config = mosaic::QuadTreeConfig::make(opt.mode.string());
 
   // Now that we have the best resolution, we can get our output_georef.
   int xresolution = total_resolution / opt.aspect_ratio, yresolution = total_resolution;
@@ -278,7 +277,7 @@ void do_mosaic(const Options& opt, const vw::ProgressCallback *progress) {
     // Even though the output georeference starts at -180, and input georef may start
     // close to 180, here we don't want to correct for this discrepancy.
     geotx.set_offset(Vector2(0, 0));
-    
+
     ImageViewRef<PixelT> source = DiskImageView<PixelT>( file );
 
     // Handle nodata values/mask
@@ -320,7 +319,7 @@ void do_mosaic(const Options& opt, const vw::ProgressCallback *progress) {
     if ( global ) {
       vw_out() << "\t--> Detected global overlay. Using cylindrical edge extension to hide the seam.\n";
       source = crop( transform( source, geotx, source.cols(), source.rows(), CylindricalEdgeExtension() ), bbox );
-    } else {
+    } else { // not global
       if ( norm_2(geotx.reverse(geotx.forward(Vector2()))) >
            0.01*norm_2(Vector2(source.cols(),source.rows())) ) {
         // Check for a fault were the forward bbox is correct, however
@@ -343,7 +342,7 @@ void do_mosaic(const Options& opt, const vw::ProgressCallback *progress) {
       } else {
         source = transform( source, geotx, bbox );
       }
-    }
+    } // end if not global
 
     // Images that wrap the date line must be added to the composite on both sides.
     if( bbox.max().x() > total_resolution ) {
@@ -367,17 +366,17 @@ void do_mosaic(const Options& opt, const vw::ProgressCallback *progress) {
     BBox2i bbox = total_bbox;
     // Compute a tighter Google Earth coordinate system aligned bounding box.
     int dim = 2 << (int)(log( (double)(std::max)(bbox.width(),bbox.height()) )/log(2.));
-    if( dim > total_resolution ) 
+    if( dim > total_resolution )
       dim = total_resolution;
     total_bbox = BBox2i( (bbox.min().x()/dim)*dim, (bbox.min().y()/dim)*dim, dim, dim );
     if( ! total_bbox.contains( bbox ) ) {
-      if( total_bbox.max().x() == xresolution ) 
+      if( total_bbox.max().x() == xresolution )
         total_bbox.min().x() -= dim;
-      else 
+      else
         total_bbox.max().x() += dim;
-      if( total_bbox.max().y() == yresolution ) 
+      if( total_bbox.max().y() == yresolution )
         total_bbox.min().y() -= dim;
-      else 
+      else
         total_bbox.max().y() += dim;
     }
   }
@@ -391,8 +390,7 @@ void do_mosaic(const Options& opt, const vw::ProgressCallback *progress) {
 
   mosaic::QuadTreeGenerator quadtree( composite, opt.output_file_name );
 
-  // This whole bit here is terrible. This functionality should be moved into
-  // the Config base class somehow.
+  // This whole bit here is terrible. This functionality should be moved into the Config base class somehow.
   if( opt.mode == Mode::KML ) {
     mosaic::KMLQuadTreeConfig *c2 = dynamic_cast<mosaic::KMLQuadTreeConfig*>(config.get());
     BBox2 ll_bbox( -180.0 + (360.0*total_bbox.min().x())/xresolution,
@@ -435,6 +433,8 @@ void do_mosaic(const Options& opt, const vw::ProgressCallback *progress) {
 
   // Generate the composite.
   vw_out() << "Generating " << opt.mode.string() << " overlay..." << std::endl;
+  vw_out() << "Writing: " << opt.output_file_name << std::endl;
+
   quadtree.generate(*progress);
 }
 

@@ -142,31 +142,6 @@ namespace cartography {
     init_proj();
   }
 
-#if defined(VW_HAVE_PKG_PROTOBUF) && VW_HAVE_PKG_PROTOBUF==1
-  GeoReference::GeoReference(GeoReferenceDesc const& desc) {
-    VW_ASSERT(desc.transform_size() == 9,
-              IOErr() << "GeoReference::GeoReference: Unexpected number of elements in transform");
-
-    m_datum = Datum(desc.datum());
-    m_pixel_interpretation =
-      static_cast<GeoReferenceBase::PixelInterpretation>(desc.pixel_interpretation());
-    set_transform(Matrix3x3(desc.transform().data()));
-    set_proj4_projection_str(desc.proj_projection_str());
-  }
-
-  GeoReferenceDesc GeoReference::build_desc() {
-    GeoReferenceDesc desc;
-
-    *(desc.mutable_datum()) = m_datum.build_desc();
-    desc.set_pixel_interpretation(static_cast<GeoReferenceDesc::PixelInterpretation>(m_pixel_interpretation));
-    std::copy(m_transform.begin(), m_transform.end(), RepeatedFieldBackInserter(desc.mutable_transform()));
-    desc.set_is_projected(m_is_projected);
-    desc.set_proj_projection_str(m_proj_projection_str);
-
-    return desc;
-  }
-#endif
-
   void GeoReference::set_transform(Matrix3x3 transform) {
     m_transform = transform;
     m_shifted_transform = m_transform;
@@ -265,6 +240,14 @@ namespace cartography {
     set_proj4_projection_str(strm.str());
   }
 
+  void GeoReference::set_stereographic(double center_latitude, double center_longitude, double scale, double false_easting, double false_northing) {
+    std::ostringstream strm;
+    strm << "+proj=stere +lon_0=" << center_longitude << " +lat_0="
+         << center_latitude << " +k=" << scale << " +x_0=" << false_easting
+         << " +y_0=" << false_northing << " +units=m";
+    set_proj4_projection_str(strm.str());
+  }
+
   void GeoReference::set_oblique_stereographic(double center_latitude, double center_longitude, double scale, double false_easting, double false_northing) {
     std::ostringstream strm;
     strm << "+proj=sterea +lon_0=" << center_longitude << " +lat_0="
@@ -273,9 +256,9 @@ namespace cartography {
     set_proj4_projection_str(strm.str());
   }
 
-  void GeoReference::set_stereographic(double center_latitude, double center_longitude, double scale, double false_easting, double false_northing) {
+  void GeoReference::set_gnomonic(double center_latitude, double center_longitude, double scale, double false_easting, double false_northing) {
     std::ostringstream strm;
-    strm << "+proj=stere +lon_0=" << center_longitude << " +lat_0="
+    strm << "+proj=gnom +lon_0=" << center_longitude << " +lat_0="
          << center_latitude << " +k=" << scale << " +x_0=" << false_easting
          << " +y_0=" << false_northing << " +units=m";
     set_proj4_projection_str(strm.str());
@@ -328,9 +311,9 @@ namespace cartography {
         m_using_lon_wrap = false; // Other projections currently not using this correction.
         return; // Nothing else to do here!
      }
-     
+
      // Start of special handling code for eqc case.
-     
+
      // Since we don't have any image information we have to assume this
      //  georef needs to be valid for a full 360 degrees.
      const double GEOREF_VALID_WIDTH = 360.0;
@@ -347,7 +330,7 @@ namespace cartography {
      // Figure out where the 0,0 pixel transforms to in lon/lat.
      // - Remember that we turned off wrapping before this call.
      Vector2 lonlatBound = pixel_to_lonlat(Vector2(0,0)); // No wiggle room here since we are aligning to 90 degrees anyways
-     double minLon, maxLon;                                          
+     double minLon, maxLon;
 
      // In order to make the normalization range look better, shift it
      //  to start at the nearest multiple of 90 degrees.
@@ -364,8 +347,8 @@ namespace cartography {
        while (maxLon < lonlatBound[0]) // Get the next multiple of 90 below the bound we found
          maxLon += ALIGN_MULTIPLE;
        minLon = maxLon - GEOREF_VALID_WIDTH;
-     }  
-     
+     }
+
      // Now that we now the range that the the georef "naturally"
      //  projects from, get the center point.
 
@@ -382,7 +365,7 @@ namespace cartography {
      m_using_lon_wrap  = true;
   }
 #endif
-  
+
 #if defined(VW_HAVE_PKG_GDAL) && VW_HAVE_PKG_GDAL
   void GeoReference::set_wkt(std::string const& wkt) {
     const char *wkt_str = wkt.c_str();

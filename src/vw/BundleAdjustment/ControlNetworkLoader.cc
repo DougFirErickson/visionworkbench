@@ -58,7 +58,6 @@ void vw::ba::triangulate_control_point( ControlPoint& cp,
     size_t k_cam_id = cp[k].image_id();
     if ( norm_2( camera_models[j_cam_id]->camera_center( cp[j].position() ) -
                  camera_models[k_cam_id]->camera_center( cp[k].position() ) ) > 1e-6 ) {
-
       try {
         stereo::StereoModel sm( camera_models[ j_cam_id ].get(),
                                 camera_models[ k_cam_id ].get() );
@@ -70,13 +69,15 @@ void vw::ba::triangulate_control_point( ControlPoint& cp,
           position_sum += sm( cp[j].position(), cp[k].position(), error );
           error_sum += error;
         }
-      } catch ( const camera::PixelToRayErr& ) { /* Just let it go */ }
+      } catch ( const camera::PixelToRayErr& ) {
+        /* Just let it go */
+      }
     }
   }
 
   // 4.2.) Summing, Averaging, and Storing
   if ( !count ) {
-    vw_out(WarningMessage,"ba") << "Unable to triangulation position for point!\n";
+    vw_out(WarningMessage,"ba") << "Unable to triangulate point!\n";
     // At the very least we can provide a point that is some
     // distance out from the camera center and is in the 'general'
     // area.
@@ -94,13 +95,14 @@ void vw::ba::triangulate_control_point( ControlPoint& cp,
   }
 }
 
-void vw::ba::build_control_network( bool triangulate_control_points,
+bool vw::ba::build_control_network( bool triangulate_control_points,
                                     ba::ControlNetwork& cnet,
                                     std::vector<boost::shared_ptr<camera::CameraModel> >
                                     const& camera_models,
                                     std::vector<std::string> const& image_files,
                                     size_t min_matches,
-                                    std::string const& prefix) {
+                                    std::string const& prefix,
+                                    double min_angle) {
   cnet.clear();
 
   // We can't guarantee that image_files is sorted, so we make a
@@ -120,7 +122,7 @@ void vw::ba::build_control_network( bool triangulate_control_points,
   // Look for match files starting with given prefix.
   std::vector<std::string> match_files;
   std::vector<size_t> index1_vec, index2_vec;
-  
+
   // Searching through the directories available to us.
   typedef std::map<std::string,size_t>::iterator MapIterator;
   int num_images = image_files.size();
@@ -144,13 +146,13 @@ void vw::ba::build_control_network( bool triangulate_control_points,
       index2_vec.push_back(it2->second);
     }
   }
-  
+
   size_t num_load_rejected = 0, num_loaded = 0;
   for (size_t file_iter  =  0; file_iter < match_files.size(); file_iter++){
     std::string match_file = match_files[file_iter];
     size_t index1 = index1_vec[file_iter];
     size_t index2 = index2_vec[file_iter];
-    
+
     // Actually read in the file as it seems we've found something correct
     std::vector<ip::InterestPoint> ip1, ip2;
     vw_out(DebugMessage,"ba") << "Loading: " << match_file << std::endl;
@@ -200,23 +202,25 @@ void vw::ba::build_control_network( bool triangulate_control_points,
 
   if ( num_load_rejected != 0 ) {
     vw_out(WarningMessage,"ba") << "\tDidn't load " << num_load_rejected
-                                << " matches due to inadequacy.\n";
+                                << " matches due to inadequacy. Decrease the"
+                                << " --min-matches parameter to load smaller "
+                                << "sets of matches.\n";
     vw_out(WarningMessage,"ba") << "\tLoaded " << num_loaded << " matches.\n";
   }
 
   // Building control network
-  crn.write_controlnetwork( cnet );
+  bool success = crn.write_controlnetwork( cnet );
 
   // Triangulating Positions
   if (triangulate_control_points){
     TerminalProgressCallback progress("ba", "Triangulating:");
     progress.report_progress(0);
     double inc_prog = 1.0/double(cnet.size());
-    double min_angle = 5.0*M_PI/180.0;
     BOOST_FOREACH( ba::ControlPoint& cpoint, cnet ) {
       progress.report_incremental_progress(inc_prog );
       ba::triangulate_control_point( cpoint, camera_models, min_angle );
     }
     progress.report_finished();
   }
+  return success;
 }
